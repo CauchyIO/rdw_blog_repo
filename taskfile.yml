@@ -1,0 +1,68 @@
+version: '3'
+dotenv: [.env]
+
+vars:
+  PACKAGE_IMPORT_NAME: rdw
+  PYTHON_VERSION: 3.11
+
+tasks:
+  create-venv:
+    desc: Create a virtual environment
+    cmds:
+      - uv venv -p {{.PYTHON_VERSION}} .venv
+    silent: false
+
+  sync-dev:
+    desc: Sync project dependencies with optionals
+    cmds:
+      - rm -rf .venv
+      - task: create-venv
+      - uv sync --extra dev
+
+  sync-test:
+    desc: Sync only test dependencies
+    cmds:
+        - rm -rf .venv
+        - task: create-venv
+        - uv sync --extra test
+        # - source .venv/Scripts/activate && uv sync --extra test # Activate and sync
+
+  lint:
+    desc: Run pre-commit hooks
+    cmds:
+      - uv run pre-commit run --all-files
+
+  run-unit-tests:
+    cmds:
+      - export PYTEST_EXIT_STATUS=0
+      - rm -rf test-reports || true
+      - uv run pytest -m "not ci_exclude" ./tests --cov "{{.TASKFILE_DIR}}/src/{{.PACKAGE_IMPORT_NAME}}" --cov-report html --cov-report term  --cov-report xml --junit-xml "{{.TASKFILE_DIR}}/test-reports/report.xml" --cov-fail-under 60 || ((PYTEST_EXIT_STATUS+=$?))
+      - mv coverage.xml "{{.TASKFILE_DIR}}/test-reports/" || true
+      - mv htmlcov "{{.TASKFILE_DIR}}/test-reports/" && rm -rf htmlcov
+      - mv .coverage "{{.TASKFILE_DIR}}/test-reports/" || true
+      - exit $PYTEST_EXIT_STATUS
+    silent: true
+    desc: "Run tests with coverage reports and move results to test-reports directory"
+
+  clean:
+    desc: "Clean up build artifacts, caches, and temporary files"
+    cmds:
+      - rm -rf dist build coverage.xml test-reports tests/mlruns test-rdw
+      - find . -type d \( -name "*cache*" -o -name "*.dist-info" -o -name "*.egg-info" -o -name "*htmlcov" \) -not -path "*env/*" -exec rm -r {} + || true
+      - find . -type f -name "*.pyc" -not -path "*env/*" -exec rm {} +
+    silent: true
+
+  build:
+    desc: Build the project
+    cmds:
+      - uv build
+
+  help:
+    desc: Print all tasks defined in the Taskfile
+    cmd: task -l
+    silent: true
+
+  default:
+    cmds:
+      - task: help
+    silent: true

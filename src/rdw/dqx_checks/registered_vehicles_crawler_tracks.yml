@@ -1,0 +1,12 @@
+# Data Quality Checks for: registered_vehicles_crawler_tracks
+# Table description: Vehicle rubber track/crawler specifications
+
+# ============================================================================
+# FOREIGN KEY CHECKS
+# ============================================================================
+- name: fk_license_plate_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    arguments:
+      column: license_plate

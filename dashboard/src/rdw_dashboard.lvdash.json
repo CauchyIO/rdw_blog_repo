@@ -1,0 +1,1334 @@
+{
+  "datasets": [
+    {
+      "name": "c7707718",
+      "displayName": "registered_vehicles",
+      "queryLines": [
+        "SELECT * FROM gold_catalog.rdw_etl.registered_vehicles"
+      ]
+    },
+    {
+      "name": "top20_brands",
+      "displayName": "top20_brands",
+      "queryLines": [
+        "SELECT make, COUNT(*) as count FROM gold_catalog.rdw_etl.registered_vehicles GROUP BY make ORDER BY count DESC LIMIT 20"
+      ]
+    },
+    {
+      "name": "job_runs",
+      "displayName": "job_runs",
+      "queryLines": [
+        "WITH jobs AS ( ",
+        "  SELECT *, ROW_NUMBER() OVER (PARTITION BY workspace_id, job_id ORDER BY change_time DESC) as rn ",
+        "  FROM system.lakeflow.jobs ",
+        "  WHERE (name LIKE '%RDW%' OR name LIKE '%Bronze%' OR name LIKE '%Silver%' OR name LIKE '%Gold%')",
+        "  QUALIFY rn = 1 ",
+        ") ",
+        "SELECT ",
+        "  jrt.run_id, ",
+        "  jobs.name as job_name, ",
+        "  jrt.result_state, ",
+        "  jrt.trigger_type, ",
+        "  jrt.period_start_time, ",
+        "  jrt.period_end_time, ",
+        "  COALESCE(TIMESTAMPDIFF(SECOND, jrt.period_start_time, jrt.period_end_time), 0) as duration_seconds, ",
+        "  ROUND(COALESCE(TIMESTAMPDIFF(SECOND, jrt.period_start_time, jrt.period_end_time), 0) / 60.0, 1) as duration_minutes ",
+        "FROM system.lakeflow.job_run_timeline jrt ",
+        "LEFT JOIN jobs USING (workspace_id, job_id) ",
+        "WHERE jobs.name IS NOT NULL ",
+        "  AND jrt.result_state IS NOT NULL ",
+        "  AND jrt.period_start_time > CURRENT_TIMESTAMP() - INTERVAL 30 DAYS"
+      ]
+    },
+    {
+      "name": "job_runs_by_state",
+      "displayName": "job_runs_by_state",
+      "queryLines": [
+        "WITH jobs AS ( ",
+        "  SELECT *, ROW_NUMBER() OVER (PARTITION BY workspace_id, job_id ORDER BY change_time DESC) as rn ",
+        "  FROM system.lakeflow.jobs ",
+        "  WHERE (name LIKE '%RDW%' OR name LIKE '%Bronze%' OR name LIKE '%Silver%' OR name LIKE '%Gold%')",
+        "  QUALIFY rn = 1 ",
+        ") ",
+        "SELECT ",
+        "  jobs.name as job_name, ",
+        "  jrt.result_state, ",
+        "  COUNT(DISTINCT jrt.run_id) as run_count ",
+        "FROM system.lakeflow.job_run_timeline jrt ",
+        "LEFT JOIN jobs USING (workspace_id, job_id) ",
+        "WHERE jobs.name IS NOT NULL ",
+        "  AND jrt.result_state IS NOT NULL ",
+        "  AND jrt.period_start_time > CURRENT_TIMESTAMP() - INTERVAL 30 DAYS ",
+        "GROUP BY jobs.name, jrt.result_state ",
+        "ORDER BY jobs.name, run_count DESC"
+      ]
+    },
+    {
+      "name": "job_runs_daily",
+      "displayName": "job_runs_daily",
+      "queryLines": [
+        "WITH jobs AS ( ",
+        "  SELECT *, ROW_NUMBER() OVER (PARTITION BY workspace_id, job_id ORDER BY change_time DESC) as rn ",
+        "  FROM system.lakeflow.jobs ",
+        "  WHERE (name LIKE '%RDW%' OR name LIKE '%Bronze%' OR name LIKE '%Silver%' OR name LIKE '%Gold%')",
+        "  QUALIFY rn = 1 ",
+        ") ",
+        "SELECT ",
+        "  DATE(jrt.period_start_time) as run_date, ",
+        "  jrt.result_state, ",
+        "  COUNT(DISTINCT jrt.run_id) as run_count ",
+        "FROM system.lakeflow.job_run_timeline jrt ",
+        "LEFT JOIN jobs USING (workspace_id, job_id) ",
+        "WHERE jobs.name IS NOT NULL ",
+        "  AND jrt.result_state IS NOT NULL ",
+        "  AND jrt.period_start_time > CURRENT_TIMESTAMP() - INTERVAL 30 DAYS ",
+        "GROUP BY DATE(jrt.period_start_time), jrt.result_state ",
+        "ORDER BY run_date"
+      ]
+    },
+    {
+      "name": "job_stats",
+      "displayName": "job_stats",
+      "queryLines": [
+        "WITH jobs AS ( ",
+        "  SELECT *, ROW_NUMBER() OVER (PARTITION BY workspace_id, job_id ORDER BY change_time DESC) as rn ",
+        "  FROM system.lakeflow.jobs ",
+        "  WHERE (name LIKE '%RDW%' OR name LIKE '%Bronze%' OR name LIKE '%Silver%' OR name LIKE '%Gold%')",
+        "  QUALIFY rn = 1 ",
+        "), ",
+        "job_runs AS ( ",
+        "  SELECT ",
+        "    jobs.name as job_name, ",
+        "    jrt.run_id, ",
+        "    jrt.result_state, ",
+        "    SUM(TIMESTAMPDIFF(SECOND, jrt.period_start_time, jrt.period_end_time)) as duration_seconds ",
+        "  FROM system.lakeflow.job_run_timeline jrt ",
+        "  LEFT JOIN jobs USING (workspace_id, job_id) ",
+        "  WHERE jobs.name IS NOT NULL ",
+        "    AND jrt.result_state IS NOT NULL ",
+        "    AND jrt.period_start_time > CURRENT_TIMESTAMP() - INTERVAL 30 DAYS ",
+        "  GROUP BY jobs.name, jrt.run_id, jrt.result_state ",
+        ") ",
+        "SELECT ",
+        "  job_name, ",
+        "  COUNT(*) as total_runs, ",
+        "  SUM(CASE WHEN result_state = 'SUCCEEDED' THEN 1 ELSE 0 END) as successful_runs, ",
+        "  SUM(CASE WHEN result_state IN ('FAILED', 'ERROR', 'TIMED_OUT') THEN 1 ELSE 0 END) as failed_runs, ",
+        "  ROUND(100.0 * SUM(CASE WHEN result_state = 'SUCCEEDED' THEN 1 ELSE 0 END) / COUNT(*), 1) as success_rate, ",
+        "  ROUND(AVG(duration_seconds) / 60.0, 1) as avg_duration_minutes ",
+        "FROM job_runs ",
+        "GROUP BY job_name ",
+        "ORDER BY job_name"
+      ]
+    },
+    {
+      "name": "recent_job_runs",
+      "displayName": "recent_job_runs",
+      "queryLines": [
+        "WITH jobs AS ( ",
+        "  SELECT *, ROW_NUMBER() OVER (PARTITION BY workspace_id, job_id ORDER BY change_time DESC) as rn ",
+        "  FROM system.lakeflow.jobs ",
+        "  WHERE (name LIKE '%RDW%' OR name LIKE '%Bronze%' OR name LIKE '%Silver%' OR name LIKE '%Gold%')",
+        "  QUALIFY rn = 1 ",
+        ") ",
+        "SELECT ",
+        "  jobs.name as job_name, ",
+        "  jrt.run_id, ",
+        "  jrt.result_state, ",
+        "  jrt.trigger_type, ",
+        "  jrt.period_start_time as start_time, ",
+        "  jrt.period_end_time as end_time, ",
+        "  ROUND(SUM(TIMESTAMPDIFF(SECOND, jrt.period_start_time, jrt.period_end_time)) / 60.0, 1) as duration_minutes ",
+        "FROM system.lakeflow.job_run_timeline jrt ",
+        "LEFT JOIN jobs USING (workspace_id, job_id) ",
+        "WHERE jobs.name IS NOT NULL ",
+        "  AND jrt.result_state IS NOT NULL ",
+        "  AND jrt.period_start_time > CURRENT_TIMESTAMP() - INTERVAL 7 DAYS ",
+        "GROUP BY jobs.name, jrt.run_id, jrt.result_state, jrt.trigger_type, jrt.period_start_time, jrt.period_end_time ",
+        "ORDER BY jrt.period_start_time DESC ",
+        "LIMIT 50"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "929b031d",
+      "displayName": "Overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "f6b085b4",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c7707718",
+                  "fields": [
+                    {
+                      "name": "primary_color",
+                      "expression": "`primary_color`"
+                    },
+                    {
+                      "name": "count(primary_color)",
+                      "expression": "COUNT(`primary_color`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "count(primary_color)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "axis": {
+                    "hideTitle": true
+                  }
+                },
+                "color": {
+                  "fieldName": "primary_color",
+                  "legend": {
+                    "hideTitle": true
+                  },
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "BEIGE",
+                        "color": "#EAD2AB"
+                      },
+                      {
+                        "value": "BLAUW",
+                        "color": {
+                          "themeColorType": "selectionColor"
+                        }
+                      },
+                      {
+                        "value": "BRUIN",
+                        "color": "#8C5219"
+                      },
+                      {
+                        "value": "CREME",
+                        "color": "#F9EFE8"
+                      },
+                      {
+                        "value": "GEEL",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      },
+                      {
+                        "value": "GRIJS",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 9
+                        }
+                      },
+                      {
+                        "value": "GROEN",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      },
+                      {
+                        "value": "ORANJE",
+                        "color": "#FF8600"
+                      },
+                      {
+                        "value": "PAARS",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 6
+                        }
+                      },
+                      {
+                        "value": "ROOD",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "value": "ROSE",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 8
+                        }
+                      },
+                      {
+                        "value": "WIT",
+                        "color": {
+                          "themeColorType": "canvasBackgroundColor"
+                        }
+                      },
+                      {
+                        "value": "ZWART",
+                        "color": {
+                          "themeColorType": "fontColor"
+                        }
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "title": "Primary Colors of Vehicles",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 4,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "total-vehicles",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c7707718",
+                  "fields": [
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(`*`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(*)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Total vehicles"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "0ba761f1",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c7707718",
+                  "fields": [
+                    {
+                      "name": "countdistinct(make)",
+                      "expression": "COUNT(DISTINCT `make`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "countdistinct(make)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Total brands"
+              }
+            }
+          },
+          "position": {
+            "x": 1,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "97b56e15",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c7707718",
+                  "fields": [
+                    {
+                      "name": "countdistinct(primary_color)",
+                      "expression": "COUNT(DISTINCT `primary_color`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "countdistinct(primary_color)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Registered colors"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "050c21e2",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c7707718",
+                  "fields": [
+                    {
+                      "name": "avg(catalog_price)",
+                      "expression": "AVG(`catalog_price`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg(catalog_price)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Average new price"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "ebf9fe9c",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c7707718",
+                  "fields": [
+                    {
+                      "name": "max(first_admission_date)",
+                      "expression": "MAX(`first_admission_date`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(first_admission_date)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Newest car registered on"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "991dc692",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c7707718",
+                  "fields": [
+                    {
+                      "name": "min(first_admission_date)",
+                      "expression": "MIN(`first_admission_date`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "min(first_admission_date)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Oldest car registered on"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "a85015d6",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c7707718",
+                  "fields": [
+                    {
+                      "name": "max(catalog_price)",
+                      "expression": "MAX(`catalog_price`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(catalog_price)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Highest new price"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "05106f35",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c7707718",
+                  "fields": [
+                    {
+                      "name": "sum(catalog_price)",
+                      "expression": "SUM(`catalog_price`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(catalog_price)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Total value"
+              }
+            }
+          },
+          "position": {
+            "x": 5,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "0ac2ecb7",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c7707718",
+                  "fields": [
+                    {
+                      "name": "min(mot_expiry_date)",
+                      "expression": "MIN(`mot_expiry_date`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "min(mot_expiry_date)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Oldest expired registration"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "vehicle-types-distribution",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "c7707718",
+                  "fields": [
+                    {
+                      "name": "yearly(first_admission_date)",
+                      "expression": "DATE_TRUNC(\"YEAR\", `first_admission_date`)"
+                    },
+                    {
+                      "name": "avg(unladen_mass)",
+                      "expression": "AVG(`unladen_mass`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "yearly(first_admission_date)",
+                  "axis": {
+                    "title": "Car registration year"
+                  },
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(unladen_mass)",
+                  "axis": {
+                    "title": "Car weight (yearly avg)"
+                  },
+                  "displayName": "Car weight (avg)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "label": {
+                  "show": false
+                }
+              },
+              "frame": {
+                "title": "Historic average car weight",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "6d31dcdf",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "top20_brands",
+                  "fields": [
+                    {
+                      "name": "make",
+                      "expression": "`make`"
+                    },
+                    {
+                      "name": "count",
+                      "expression": "`count`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "make",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "count",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "make",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "frame": {
+                "title": "Top 20 Most Popular Brands",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "jobs_page",
+      "displayName": "Jobs",
+      "layout": [
+        {
+          "widget": {
+            "name": "total_job_runs",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "job_runs",
+                  "fields": [
+                    {
+                      "name": "count(run_id)",
+                      "expression": "COUNT(DISTINCT `run_id`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(run_id)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Total Runs (30 days)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "successful_runs",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "job_runs",
+                  "fields": [
+                    {
+                      "name": "count(run_id)",
+                      "expression": "COUNT(DISTINCT `run_id`)"
+                    }
+                  ],
+                  "disaggregated": false,
+                  "filters": [
+                    {
+                      "fieldName": "result_state",
+                      "expression": "`result_state` = 'SUCCEEDED'"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(run_id)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Successful Runs"
+              }
+            }
+          },
+          "position": {
+            "x": 1,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "failed_runs",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "job_runs",
+                  "fields": [
+                    {
+                      "name": "count(run_id)",
+                      "expression": "COUNT(DISTINCT `run_id`)"
+                    }
+                  ],
+                  "disaggregated": false,
+                  "filters": [
+                    {
+                      "fieldName": "result_state",
+                      "expression": "`result_state` IN ('FAILED', 'ERROR', 'TIMED_OUT')"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(run_id)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Failed Runs"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "avg_duration",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "job_runs",
+                  "fields": [
+                    {
+                      "name": "avg(duration_minutes)",
+                      "expression": "AVG(`duration_minutes`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg(duration_minutes)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Duration (min)"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "unique_jobs",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "job_runs",
+                  "fields": [
+                    {
+                      "name": "count(job_name)",
+                      "expression": "COUNT(DISTINCT `job_name`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "count(job_name)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Active Jobs"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "runs_by_state_chart",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "job_runs_by_state",
+                  "fields": [
+                    {
+                      "name": "job_name",
+                      "expression": "`job_name`"
+                    },
+                    {
+                      "name": "result_state",
+                      "expression": "`result_state`"
+                    },
+                    {
+                      "name": "run_count",
+                      "expression": "`run_count`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "job_name",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "axis": {
+                    "title": "Job Name"
+                  }
+                },
+                "y": {
+                  "fieldName": "run_count",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "axis": {
+                    "title": "Run Count"
+                  }
+                },
+                "color": {
+                  "fieldName": "result_state",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "SUCCEEDED",
+                        "color": "#3CB371"
+                      },
+                      {
+                        "value": "FAILED",
+                        "color": "#DC143C"
+                      },
+                      {
+                        "value": "ERROR",
+                        "color": "#DC143C"
+                      },
+                      {
+                        "value": "TIMED_OUT",
+                        "color": "#DC143C"
+                      },
+                      {
+                        "value": "CANCELLED",
+                        "color": "#FFA500"
+                      },
+                      {
+                        "value": "SKIPPED",
+                        "color": "#808080"
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "title": "Job Runs by Result State (30 days)",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "daily_runs_chart",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "job_runs_daily",
+                  "fields": [
+                    {
+                      "name": "run_date",
+                      "expression": "`run_date`"
+                    },
+                    {
+                      "name": "result_state",
+                      "expression": "`result_state`"
+                    },
+                    {
+                      "name": "run_count",
+                      "expression": "`run_count`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "area",
+              "encodings": {
+                "x": {
+                  "fieldName": "run_date",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "axis": {
+                    "title": "Date"
+                  }
+                },
+                "y": {
+                  "fieldName": "run_count",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "axis": {
+                    "title": "Runs"
+                  }
+                },
+                "color": {
+                  "fieldName": "result_state",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "SUCCEEDED",
+                        "color": "#3CB371"
+                      },
+                      {
+                        "value": "FAILED",
+                        "color": "#DC143C"
+                      },
+                      {
+                        "value": "ERROR",
+                        "color": "#DC143C"
+                      },
+                      {
+                        "value": "CANCELLED",
+                        "color": "#FFA500"
+                      },
+                      {
+                        "value": "SKIPPED",
+                        "color": "#808080"
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "title": "Daily Job Runs (30 days)",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "job_stats_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "job_stats",
+                  "fields": [
+                    {
+                      "name": "job_name",
+                      "expression": "`job_name`"
+                    },
+                    {
+                      "name": "total_runs",
+                      "expression": "`total_runs`"
+                    },
+                    {
+                      "name": "successful_runs",
+                      "expression": "`successful_runs`"
+                    },
+                    {
+                      "name": "failed_runs",
+                      "expression": "`failed_runs`"
+                    },
+                    {
+                      "name": "success_rate",
+                      "expression": "`success_rate`"
+                    },
+                    {
+                      "name": "avg_duration_minutes",
+                      "expression": "`avg_duration_minutes`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "job_name",
+                    "displayName": "Job Name"
+                  },
+                  {
+                    "fieldName": "total_runs",
+                    "displayName": "Total Runs"
+                  },
+                  {
+                    "fieldName": "successful_runs",
+                    "displayName": "Successful"
+                  },
+                  {
+                    "fieldName": "failed_runs",
+                    "displayName": "Failed"
+                  },
+                  {
+                    "fieldName": "success_rate",
+                    "displayName": "Success Rate %"
+                  },
+                  {
+                    "fieldName": "avg_duration_minutes",
+                    "displayName": "Avg Duration (min)"
+                  }
+                ]
+              },
+              "frame": {
+                "title": "Job Statistics (30 days)",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "recent_runs_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "recent_job_runs",
+                  "fields": [
+                    {
+                      "name": "job_name",
+                      "expression": "`job_name`"
+                    },
+                    {
+                      "name": "result_state",
+                      "expression": "`result_state`"
+                    },
+                    {
+                      "name": "trigger_type",
+                      "expression": "`trigger_type`"
+                    },
+                    {
+                      "name": "start_time",
+                      "expression": "`start_time`"
+                    },
+                    {
+                      "name": "duration_minutes",
+                      "expression": "`duration_minutes`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "job_name",
+                    "displayName": "Job Name"
+                  },
+                  {
+                    "fieldName": "result_state",
+                    "displayName": "Status"
+                  },
+                  {
+                    "fieldName": "trigger_type",
+                    "displayName": "Trigger"
+                  },
+                  {
+                    "fieldName": "start_time",
+                    "displayName": "Start Time"
+                  },
+                  {
+                    "fieldName": "duration_minutes",
+                    "displayName": "Duration (min)"
+                  }
+                ]
+              },
+              "frame": {
+                "title": "Recent Job Runs (7 days)",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    }
+  }
+}

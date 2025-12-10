@@ -1,0 +1,10 @@
+# Databricks App dependencies
+# Note: databricks-sdk is pre-installed in Databricks Apps environment
+
+dash>=2.18.2
+dash-bootstrap-components>=1.6.0
+pandas>=2.2.3
+python-dotenv>=1.0.0
+huggingface-hub>=0.26.2
+databricks-sdk>=0.1.0
+databricks-connect>=15.1.0

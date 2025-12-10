@@ -1,0 +1,23 @@
+# Data Quality Checks for: odometer_reading_judgment_explanation
+# Table description: Reference table for vehicle mileage judgment codes and explanations
+
+# ============================================================================
+# PRIMARY KEY CHECKS
+# ============================================================================
+- name: pk_odometer_judgment_explanation_code_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    arguments:
+      column: odometer_judgment_explanation_code
+
+# ============================================================================
+# VALUE CHECKS
+# ============================================================================
+- name: odometer_judgment_explanation_code_valid_values
+  criticality: error
+  check:
+    function: sql_expression
+    arguments:
+      expression: odometer_judgment_explanation_code IN ('0', '1', '2', '3', '4', '5', '6', '7', 'NG')
+      msg: odometer_judgment_explanation_code must be one of 0-7 or NG

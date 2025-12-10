@@ -1,0 +1,79 @@
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+venv.bak/
+env.bak/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/rdw*
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+*.dist-info/
+.installed.cfg
+*.egg
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+tests/test_data/**/*
+!tests/test_data/**/.gitkeep
+
+# IDE configurations
+.idea/
+.vscode/
+
+# Databricks-specific files (if using Databricks Connect or SDK)
+databricks/*
+!.databricksignore
+
+# Logs
+logs/
+*.log
+
+# Configuration files
+*.env
+*.local
+.env.local
+.env.*.local
+.DS_Store
+
+# Personal
+data/
+CLAUDE.md
+.databricks
+/csvs
+.mcp.json
+notes.txt
+.claude
+dist
+devops
+
+# ignore data files in tests (including subdirectories)
+tests/**/*.parquet
+tests/**/*.csv
+
+# Lock files (optional - uncomment if you want to ignore)
+# uv.lock

@@ -1,0 +1,255 @@
+# This is a Databricks asset bundle definition for RDW_ETL.
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+bundle:
+  name: RDW_ETL
+  uuid: ed4e9eb2-ffd8-4352-b8a3-6a3b546b9674
+
+include:
+  - resources/*.yml
+
+artifacts:
+  default:
+    type: whl
+    build: uv build
+    path: .
+
+variables:
+  environment:
+    description: Environment (DEV/ACC/PRD)
+    default: DEV
+  full_refresh:
+    description: Overwrite all data in current UC layer
+    default: false
+  rdw_table_names:
+    description: List of RDW table names 
+    default: '["odometer_reading_judgment_explanation", "registered_vehicles", "registered_vehicles_axles", "registered_vehicles_fuel", "registered_vehicles_body", "registered_vehicles_body_specification", "registered_vehicles_class", "registered_vehicles_subcategory", "registered_vehicles_special_features", "registered_vehicles_crawler_tracks"]'
+  job_concurrency:
+    description: Number of parallel tasks to run concurrently
+    default: 4
+
+resources:
+  jobs:
+    # Downloads CSV data from RDW Open Data API
+    rdw_download:
+      name: "RDW Data Download - ${var.environment}"
+      description: "Downloads CSV files from RDW Open Data API for all configured tables"
+      tasks:
+        - task_key: download_tables_foreach
+          for_each_task:
+            inputs: ${var.rdw_table_names}
+            concurrency: ${var.job_concurrency}
+            task:
+              task_key: download_table_iteration
+              python_wheel_task:
+                package_name: rdw
+                entry_point: download_rdw_data
+                parameters:
+                  - "--table-name={{input}}"
+                  - "--run-timestamp={{job.start_time.iso_date}}T{{job.start_time.hour}}-{{job.start_time.minute}}" # YYYY-MM-DD T HH-MM
+              environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "1"
+            dependencies:
+              - ./dist/rdw-*.whl
+              - databricks-labs-dqx==0.8.0
+
+    # Processes raw CSV to bronze Delta tables
+    bronze:
+      name: "Process Bronze Layer - ${var.environment}"
+      description: "Ingests raw CSV data into bronze Delta tables with schema validation"
+      tasks:
+        - task_key: bronze_tables_foreach
+          for_each_task:
+            inputs: ${var.rdw_table_names}
+            concurrency: ${var.job_concurrency}
+            task:
+              task_key: bronze_table_iteration
+              python_wheel_task:
+                package_name: rdw
+                entry_point: process_bronze_layer
+                parameters:
+                  - "--table-name={{input}}"
+              environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "1"
+            dependencies:
+              - ./dist/rdw-*.whl
+              - databricks-labs-dqx==0.8.0
+
+    # Creates silver tables with schema, PKs, and column descriptions
+    prepare_silver:
+      name: "Prepare Silver Layer - ${var.environment}"
+      description: "Creates silver layer tables with proper schema, primary keys, and column descriptions"
+      tasks:
+        - task_key: prepare_silver_tables_foreach
+          for_each_task:
+            inputs: ${var.rdw_table_names}
+            concurrency: ${var.job_concurrency}
+            task:
+              task_key: prepare_silver_table_iteration
+              python_wheel_task:
+                package_name: rdw
+                entry_point: prepare_silver_layer
+                parameters:
+                  - "--table-name={{input}}"
+              environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "1"
+            dependencies:
+              - ./dist/rdw-*.whl
+              - databricks-labs-dqx==0.8.0
+
+    # Processes bronze to silver with SCD2, DQX validation, and FK constraints
+    silver:
+      name: "Process Silver Layer - ${var.environment}"
+      description: "Applies SCD2 transformations, DQX data quality checks, and adds FK constraints"
+      tasks:
+        - task_key: silver_tables_foreach
+          for_each_task:
+            inputs: ${var.rdw_table_names}
+            concurrency: ${var.job_concurrency}
+            task:
+              task_key: silver_table_iteration
+              max_retries: 0
+              python_wheel_task:
+                package_name: rdw
+                entry_point: process_silver_layer
+                parameters:
+                  - "--table-name={{input}}"
+                  - "--full-refresh=${var.full_refresh}"
+              environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "1"
+            dependencies:
+              - ./dist/rdw-*.whl
+              - databricks-labs-dqx==0.8.0
+
+    # Creates business-ready gold tables and metric views
+    gold:
+      name: "Process Gold Layer - ${var.environment}"
+      description: "Creates licensed_vehicles table and vehicle_fleet_metrics metric view"
+      tasks:
+        - task_key: process_gold_layer
+          python_wheel_task:
+            package_name: rdw
+            entry_point: process_gold_layer
+          environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "1"
+            dependencies:
+              - ./dist/rdw-*.whl
+              - databricks-labs-dqx==0.8.0
+
+    # Runs bronze -> prepare_silver -> silver -> gold (skips download)
+    partial_pipeline:
+      name: "RDW Process Bronze/Silver/Gold - ${var.environment}"
+      description: "Processes existing CSV data through bronze, silver, and gold layers"
+      tasks:
+        - task_key: run_bronze
+          run_job_task:
+            job_id: ${resources.jobs.bronze.id}
+
+        - task_key: run_prepare_silver
+          depends_on:
+            - task_key: run_bronze
+          run_job_task:
+            job_id: ${resources.jobs.prepare_silver.id}
+
+        - task_key: run_silver
+          depends_on:
+            - task_key: run_prepare_silver
+          run_job_task:
+            job_id: ${resources.jobs.silver.id}
+
+        - task_key: run_gold
+          depends_on:
+            - task_key: run_silver
+          run_job_task:
+            job_id: ${resources.jobs.gold.id}
+
+    # Runs complete pipeline: download -> bronze -> prepare_silver -> silver -> gold
+    full_pipeline:
+      name: "Full RDW Pipeline - ${var.environment}"
+      description: "Complete ETL pipeline from RDW API download through gold layer"
+      tasks:
+        - task_key: run_download
+          run_job_task:
+            job_id: ${resources.jobs.rdw_download.id}
+
+        - task_key: run_bronze
+          depends_on:
+            - task_key: run_download
+          run_job_task:
+            job_id: ${resources.jobs.bronze.id}
+
+        - task_key: run_prepare_silver
+          depends_on:
+            - task_key: run_bronze
+          run_job_task:
+            job_id: ${resources.jobs.prepare_silver.id}
+
+        - task_key: run_silver
+          depends_on:
+            - task_key: run_prepare_silver
+          run_job_task:
+            job_id: ${resources.jobs.silver.id}
+
+        - task_key: run_gold
+          depends_on:
+            - task_key: run_silver
+          run_job_task:
+            job_id: ${resources.jobs.gold.id}
+
+  apps:
+    rdw_webapp:
+      name: "rdw-webapp-${bundle.target}"
+      description: "RDW Vehicle Data Dashboard"
+      source_code_path: ./webapp
+      permissions:
+        - user_name: your@user.io # ENTER HERE
+          level: CAN_MANAGE
+
+  sql_warehouses:
+    serverless_warehouse:
+      name: "RDW Serverless Warehouse"
+      warehouse_type: PRO
+      cluster_size: 2X-Small
+      enable_serverless_compute: true
+      auto_stop_mins: 10
+      max_num_clusters: 1
+
+  dashboards:
+    rdw_dashboard:
+      display_name: "RDW Dashboard"
+      file_path: dashboard/src/rdw_dashboard.lvdash.json
+      warehouse_id: ${resources.sql_warehouses.serverless_warehouse.id}
+  
+targets:
+  dev:
+    # The default target uses 'mode: development' to create a development copy.
+    # - Deployed resources get prefixed with '[dev my_user_name]'
+    # - Any job schedules and triggers are paused by default.
+    # See also https://docs.databricks.com/dev-tools/bundles/deployment-modes.html.
+    mode: development
+    default: true
+    workspace:
+      host: https://adb-yourhost.net # ENTER HERE
+    variables:
+      environment: DEV
+
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-yourhost.net # ENTER HERE
+    variables:
+      environment: PRD

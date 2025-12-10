@@ -1,0 +1,111 @@
+[project]
+name = "rdw"
+description = "RDW Data Ingestion Framework"
+requires-python = ">=3.10, <3.12"
+dependencies = [
+    "databricks-labs-dqx==0.8.0",
+    # few core dependencies on purpose to avoid conflicts on DB clusters.
+    "pydantic_settings>=1.10.6",
+]
+
+dynamic = ['version']
+
+[project.optional-dependencies]
+dev = [
+    "numpy==1.26.4",
+    "pandas==2.2.3",
+    "databricks-connect==15.4.5",
+    "ipykernel>=6.29.5, <7",
+    "pip>=24.2",
+    "pre-commit>=4.1.0, <5",
+    "pytest>=8.3.5, <9",
+    ]
+
+test = [
+    "numpy==1.26.4",
+    "pandas==2.2.3",
+    "pre-commit>=4.1.0, <5",
+    "delta-spark==3.3.0",
+    "pyspark==3.5.5",
+    "pytest>=8.3.5",
+    "pytest-cov >=6.1.0",
+    "pytest-order>=1.2.0",
+    "pydantic-settings>=2.8.1",
+    "requests>=2.31.0"
+]
+
+webapp = [
+    "dash>=2.18.2",
+    "dash-bootstrap-components>=1.6.0",
+    "python-dotenv>=1.0.0",
+    "huggingface-hub>=0.26.2",
+    "pandas>=2.2.3",
+    "polars>=1.0.0",
+    "databricks-connect==15.4.5",
+]
+
+
+[build-system]
+requires = ["setuptools>=72.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where =["src", "."]
+include = ["rdw*", "webapp*"]
+
+[tool.setuptools.package-data]
+rdw = ["dqx_checks/*.yml", "views/*.yml"]
+
+[tool.setuptools.dynamic]
+version = { file = "version.txt" }
+
+[project.scripts]
+download_rdw_data = "rdw.jobs.download_rdw_data:main"
+process_bronze_layer = "rdw.jobs.process_bronze_layer:main"
+prepare_silver_layer = "rdw.jobs.prepare_silver_layer:main"
+process_silver_layer = "rdw.jobs.process_silver_layer:main"
+process_gold_layer = "rdw.jobs.process_gold_layer:main"
+
+
+[tool.pytest.ini_options]
+testpaths = [ "tests" ]
+pythonpath = [ "." ]
+
+markers = [
+    "ci_exclude: Tests excluded from CI/CD pipeline",
+    "performance: Performance and scalability tests",
+    "slow: Tests that take a long time to run"
+]
+
+# [lint.pydocstyle]
+# convention = "sphinx"
+
+[tool.ruff]
+line-length = 120
+lint.select = [
+    "F",    # pyflakes rules
+    "E",    # pycodestyle error rules
+    "W",    # pycodestyle warning rules
+    "B",    # flake8-bugbear rules
+    "I",    # isort rules
+    "UP",   # pyupgrade rules
+    "SIM",  # flake8-simplify rules
+    "ERA",  # eradicate rules
+    "C",    # pylint convention rules
+    "D",    # pydocstyle rules
+    "ANN"   # flake8-annotations rules
+]
+lint.ignore = [
+    "D107", # Missing docstring in `__init__`
+    "D203", # incorrect-blank-line-before-class
+    "D213", # multi-line-summary-second-line
+    "E501", # line-too-long
+    "C901", # too complex
+    "ERA001", # commented out code
+    "D100", # missing docstring
+    "ERA001" # commented out code
+]
+
+[tool.ruff.format]
+indent-style = "space"
+docstring-code-format = true

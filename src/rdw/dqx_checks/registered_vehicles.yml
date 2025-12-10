@@ -1,0 +1,82 @@
+# Data Quality Checks for: registered_vehicles
+# Table description: Main vehicle registration table with comprehensive vehicle details
+
+# ============================================================================
+# PRIMARY KEY CHECKS
+# ============================================================================
+- name: pk_license_plate_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    arguments:
+      column: license_plate
+
+# ============================================================================
+# REQUIRED (NON-NULLABLE) COLUMNS
+# ============================================================================
+- name: vehicle_type_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    arguments:
+      column: vehicle_type
+
+- name: make_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    arguments:
+      column: make
+
+- name: trade_name_not_null
+  criticality: error
+  check:
+    function: is_not_null
+    arguments:
+      column: trade_name
+
+# ============================================================================
+# STRING FORMAT VALIDATIONS
+# ============================================================================
+- name: license_plate_length_valid
+  criticality: error
+  check:
+    function: sql_expression
+    arguments:
+      expression: LENGTH(license_plate) = 6
+      msg: license_plate must be exactly 6 characters
+
+# ============================================================================
+# DATE VALIDATIONS
+# ============================================================================
+- name: mot_expiry_date_valid_date
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: mot_expiry_date IS NULL OR mot_expiry_date >= '1890-01-01'
+      msg: mot_expiry_date should be null or a valid date after 1890-01-01
+
+- name: registration_date_valid_date
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: registration_date IS NULL OR registration_date >= '1890-01-01'
+      msg: registration_date should be null or a valid date after 1890-01-01
+
+- name: first_admission_date_valid_date
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: first_admission_date IS NULL OR first_admission_date >= '1890-01-01'
+      msg: first_admission_date should be null or a valid date after 1890-01-01
+
+- name: first_registration_date_nl_valid_date
+  criticality: warn
+  check:
+    function: sql_expression
+    arguments:
+      expression: first_registration_date_nl IS NULL OR first_registration_date_nl >= '1890-01-01'
+      msg: first_registration_date_nl should be null or a valid date after 1890-01-01

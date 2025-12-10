@@ -1,0 +1,72 @@
+# RDW Vehicle Fleet Metrics
+# Metric view for Dutch vehicle registration analytics
+
+version: 1.1
+
+source: gold_catalog.rdw_etl.registered_vehicles
+
+comment: |
+  Vehicle fleet metrics for analyzing the Dutch passenger car registry.
+  Provides insights into fleet composition and technical specifications.
+
+dimensions:
+  # Fleet Composition
+  - name: make
+    expr: make
+    comment: Vehicle manufacturer/brand
+
+  - name: trade_name
+    expr: trade_name
+    comment: Commercial model name
+
+  - name: vehicle_type
+    expr: vehicle_type
+    comment: Vehicle category
+
+  - name: primary_color
+    expr: primary_color
+    comment: Main vehicle color
+
+  - name: interior_layout
+    expr: interior_layout
+    comment: Body style (hatchback, sedan, etc.)
+
+  # Technical Classification
+  - name: number_of_cylinders
+    expr: number_of_cylinders
+    comment: Engine cylinder count
+
+  - name: fuel_efficiency_class
+    expr: fuel_efficiency_class
+    comment: Fuel efficiency classification
+
+  - name: european_vehicle_category
+    expr: european_vehicle_category
+    comment: EU vehicle category code (M1, N1, etc.)
+
+measures:
+  # Counts
+  - name: vehicle_count
+    expr: COUNT(license_plate)
+    comment: Total number of vehicles
+
+  - name: unique_makes
+    expr: COUNT(DISTINCT make)
+    comment: Number of distinct manufacturers
+
+  - name: unique_models
+    expr: COUNT(DISTINCT trade_name)
+    comment: Number of distinct models
+
+  # Technical Specifications
+  - name: avg_engine_displacement
+    expr: AVG(engine_displacement)
+    comment: Average engine displacement (cc)
+
+  - name: avg_power_to_weight
+    expr: AVG(power_to_weight_ratio)
+    comment: Average power-to-weight ratio (kW)
+
+  - name: avg_unladen_mass
+    expr: AVG(unladen_mass)
+    comment: Average empty vehicle weight (kg)

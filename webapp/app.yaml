@@ -1,0 +1,13 @@
+# Databricks App runtime configuration
+# See: https://docs.databricks.com/dev-tools/databricks-apps/app-runtime
+
+command: ['python', 'app.py']
+
+env:
+  # Add environment variables as needed
+  # - name: DATABRICKS_WAREHOUSE_ID
+  #   valueFrom: 'sql-warehouse'
+  # - name: API_KEY
+  #   valueFrom:
+  #     secretScope: rdw_secrets
+  #     secretKey: api_key
