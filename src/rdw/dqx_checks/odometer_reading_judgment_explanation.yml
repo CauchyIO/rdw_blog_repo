@@ -19,5 +19,5 @@
   check:
     function: sql_expression
     arguments:
-      expression: odometer_judgment_explanation_code IN ('0', '1', '2', '3', '4', '5', '6', '7', 'NG')
+      expression: odometer_judgment_explanation_code IN ('00', '01', '02', '03', '04', '05', '06', '07', 'NG')
       msg: odometer_judgment_explanation_code must be one of 0-7 or NG
