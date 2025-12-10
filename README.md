@@ -247,8 +247,7 @@ A production-ready ETL pipeline for ingesting and processing Dutch RDW (Vehicle 
 ├── pyproject.toml                    # Project configuration & dependencies
 ├── databricks.yml                    # Databricks Asset Bundle configuration
 ├── taskfile.yml                      # Task runner automation
-├── version.txt                       # Version string (0.2)
-├── CLAUDE.md                         # Implementation guidelines
+├── version.txt                       # Version string
 └── README.md                         # This file
 ```
 
@@ -471,34 +470,6 @@ Tests use a local Spark session configured in `tests/fixtures/spark_fixture.py`:
 - SQL shuffle partitions: 1
 - Executor cores: 1
 
-## CI/CD Pipeline
-
-### Azure DevOps Integration
-
-**Pipeline**: `devops/pipelines/azure-pipelines.yml`
-
-**Stages**:
-1. **CI (Continuous Integration)**
-   - Code checkout
-   - Disk space verification
-   - uv package manager installation
-   - Java installation (for PySpark)
-   - Virtual environment setup
-   - Dependency installation
-   - Linting (ruff)
-   - Type checking (mypy)
-   - Unit tests (pytest)
-
-2. **CD (Continuous Deployment)**
-   - Databricks bundle deployment
-   - Job scheduling
-
-**Triggers**:
-- On commits to `main` and `feature/*` branches
-- On pull requests
-- Excludes documentation changes (*.md, docs/**)
-
-**Agent Pool**: Self-hosted Linux agents
 
 ## Configuration
 
@@ -538,85 +509,6 @@ The `databricks.yml` configures:
   - `bronze`: Bronze layer processing
   - Wheel package deployment
   - Environment-specific dependencies
-
-## Future Roadmap
-
-**Potential Enhancements**:
-- [ ] Data lineage tracking
-- [ ] Quality metrics dashboards
-- [ ] Advanced monitoring and alerting
-- [ ] Performance optimization for full-scale processing
-
-## Performance
-
-### Sample Scale (1,000 records)
-- CSV download: ~2-5 seconds
-- Bronze processing: ~10 seconds
-- Silver SCD2 processing: ~5-10 seconds
-
-### Estimated Full Scale (16.6M RDW records)
-- Bronze ingestion: ~30-60 minutes
-- Silver SCD2 processing: ~15-30 minutes
-- Total pipeline run: ~1-2 hours
-
-## Quality Assurance
-
-### Code Quality
-
-- **Linting**: Ruff with strict rules (line-length: 120, includes D, ANN, E, W, B, I, SIM)
-- **Type Checking**: mypy-compatible (all functions have type hints)
-- **Documentation**: Docstrings for all public functions/classes
-- **Testing**: Unit tests with pytest, local Spark fixtures
-
-### Data Quality
-
-- Schema validation via Pydantic
-- Column type verification
-- License plate length validation (6 chars for Dutch plates)
-- Primary/foreign key constraints
-- NULL handling via `is_nullable` flags
-- DQX validation with quarantine mechanism
-
-## Contributing
-
-### Development Workflow
-
-1. Create feature branch from `main`
-2. Make changes with type hints
-3. Add tests for new functionality
-4. Run linting: `ruff check .`
-5. Run tests: `pytest`
-6. Submit PR for review
-
-### Code Standards
-
-- Type hints on all functions: `def func(x: str) -> int:`
-- Docstrings following Google style
-- Black-compatible formatting (line-length: 120)
-- No circular imports
-- Avoid hardcoding paths (use `conf.py`)
-
-## Documentation
-
-### In Code
-- CLAUDE.md: Mission objectives & implementation guidelines
-- Inline docstrings for all functions/classes
-- Type hints for IDE support
-
-### In Repository
-- `.claude/`: Development guides for medallion architecture, testing strategy, Spark setup
-- `devops/`: Pipeline configuration documentation
-
-## Support & Issues
-
-### Common Issues
-
-**Issue**: "No access to table in silver_catalog"
-- **Solution**: Grant Service Principal read access to tables in Databricks UI
-
-**Issue**: "Java not found" (during tests)
-- **Solution**: Install OpenJDK 11: `sudo apt-get install openjdk-11-jdk`
-
 
 ## License
 
