@@ -8,12 +8,12 @@ A production-ready ETL pipeline for ingesting and processing Dutch RDW (Vehicle 
 
 #### 1. **Data Ingestion (Bronze Layer)**
 - Downloads CSV data from 10 RDW API endpoints covering:
-  - Vehicle registrations (`gekentekende_voertuigen`)
-  - Axle specifications (`gekentekende_voertuigen_assen`)
-  - Fuel & emissions data (`gekentekende_voertuigen_brandstof`)
-  - Body types (`gekentekende_voertuigen_carrosserie` and related tables)
-  - Vehicle classes, subcategories, peculiarities
-  - Mileage judgment explanations
+  - Vehicle registrations (`registered_vehicles`)
+  - Axle specifications (`registered_vehicles_axles`)
+  - Fuel & emissions data (`registered_vehicles_fuel`)
+  - Body types (`registered_vehicles_body` and related tables)
+  - Vehicle classes, subcategories, special features
+  - Odometer judgment explanations
 
 - **Key Features**:
   - Chunked downloads with streaming support for large files
@@ -61,13 +61,13 @@ A production-ready ETL pipeline for ingesting and processing Dutch RDW (Vehicle 
   - Quarantine mechanism for invalid records
 
 - **Validation Categories**:
-  - **Primary Keys**: NOT NULL on `kenteken`
-  - **Required Columns**: NOT NULL on critical fields (`merk`, `handelsbenaming`, `voertuigsoort`)
-  - **Categorical Values**: Enum checks (e.g., `wam_verzekerd` ∈ {Ja, Nee, N.v.t.})
+  - **Primary Keys**: NOT NULL on `license_plate`
+  - **Required Columns**: NOT NULL on critical fields (`make`, `trade_name`, `vehicle_type`)
+  - **Categorical Values**: Enum checks (e.g., `liability_insured` ∈ {Ja, Nee, N.v.t.})
   - **Numeric Ranges**:
-    - `aantal_zitplaatsen`: 1-100
-    - `aantal_cilinders`: 1-16
-    - `massa_ledig_voertuig`: 50kg-50,000kg
+    - `number_of_seats`: 1-100
+    - `number_of_cylinders`: 1-16
+    - `unladen_mass`: 50kg-50,000kg
   - **Business Rules**: Registration dates not in future, weight consistency
 
 - **Key Features**:
@@ -112,7 +112,7 @@ A production-ready ETL pipeline for ingesting and processing Dutch RDW (Vehicle 
     - Brand/model/color dropdown filters
     - Engine size & weight range sliders
     - Grid/list view toggle
-    - Individual vehicle detail pages (`/car/{kenteken}`)
+    - Individual vehicle detail pages (`/car/{license_plate}`)
 
   - **Prompt Feedback Tab**:
     - LLM prompt testing interface
@@ -323,7 +323,7 @@ huggingface-hub>=0.26.2           # LLM integration
 download_rdw_data
 
 # Download specific table
-download_rdw_data --table-name gekentekende_voertuigen
+download_rdw_data --table-name registered_vehicles
 
 # With environment selection
 download_rdw_data --environment DEV
@@ -336,7 +336,7 @@ download_rdw_data --environment DEV
 process_bronze_layer
 
 # Process specific table
-process_bronze_layer --table-name gekentekende_voertuigen
+process_bronze_layer --table-name registered_vehicles
 
 # With environment
 process_bronze_layer --environment DEV
@@ -352,7 +352,7 @@ process_silver_layer
 process_silver_layer --full-refresh true
 
 # Specific table
-process_silver_layer --table-name gekentekende_voertuigen
+process_silver_layer --table-name registered_vehicles
 ```
 
 ### 4. Process Gold Layer (Business Intelligence)
@@ -383,7 +383,7 @@ python app.py
 #### Bronze Layer
 - **Purpose**: Raw data ingestion (landing zone)
 - **Tables**: 10 RDW tables with 116+ total columns
-- **Primary Key**: `kenteken` (Dutch license plate)
+- **Primary Key**: `license_plate`
 - **Format**: Delta tables in Databricks
 - **Schema**: Standardized column names, preserved data types
 - **Catalog**: `bronze_catalog.rdw_etl`
