@@ -11,7 +11,7 @@ from pyspark.sql import DataFrame, SparkSession
 from rdw.definitions import get_table_by_name, rdw_tables, RDWTable
 from rdw.scd2.processor import SCD2Processor
 from rdw.conf import bronze_catalog, silver_catalog, quarantine_schema
-from rdw.utils.utils import save_delta_table_preserve_constraints, read_delta_table, save_delta_table
+from rdw.utils.utils import read_delta_table, save_delta_table
 from rdw.utils.logging_config import setup_logging
 from databricks.labs.dqx.engine import DQEngine
 from databricks.labs.dqx.checks_storage import FileChecksStorageConfig
@@ -52,14 +52,9 @@ def apply_dqx_validation(df: DataFrame, table: RDWTable, logger: logging.Logger)
     valid_df, quarantined_df = dq_engine.apply_checks_by_metadata_and_split(df, checks)
 
     # Log validation results
-    valid_count = valid_df.count()
     quarantined_count = quarantined_df.count()
-    total_count = df.count()
 
-    logger.info(f"DQX Validation Results:")
-    logger.info(f"  Total records: {total_count}")
-    logger.info(f"  Valid records: {valid_count} ({valid_count/total_count*100:.2f}%)")
-    logger.info(f"  Quarantined records: {quarantined_count} ({quarantined_count/total_count*100:.2f}%)")
+    logger.info(f"  Quarantined records: {quarantined_count}")
 
     # Save quarantined records
     quarantine_table_path = f"{bronze_catalog}.{quarantine_schema}.{table.name}"
@@ -160,7 +155,7 @@ def process_silver_layer(table_name: str, full_refresh: bool = False):
 
     # 4. SAVE: Write to silver layer
     logger.info(f"Saving silver layer table to {table.delta_silver_path}")
-    save_delta_table_preserve_constraints(history, table.delta_silver_path, spark)
+    save_delta_table(history, table.delta_silver_path, mode="overwrite", mergeSchema="true")
 
     logger.info(f"Successfully processed silver layer for '{table.name}'")
 
@@ -181,7 +176,7 @@ def main():
         type=lambda x: x.lower() == "true",
         default=False,
         help="Perform full refresh instead of incremental (ignores existing silver history)"
-    )
+    ) # Not yet implemented
 
     args = parser.parse_args()
 

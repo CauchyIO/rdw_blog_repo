@@ -41,52 +41,6 @@
       ]
     },
     {
-      "name": "job_runs_by_state",
-      "displayName": "job_runs_by_state",
-      "queryLines": [
-        "WITH jobs AS ( ",
-        "  SELECT *, ROW_NUMBER() OVER (PARTITION BY workspace_id, job_id ORDER BY change_time DESC) as rn ",
-        "  FROM system.lakeflow.jobs ",
-        "  WHERE (name LIKE '%RDW%' OR name LIKE '%Bronze%' OR name LIKE '%Silver%' OR name LIKE '%Gold%')",
-        "  QUALIFY rn = 1 ",
-        ") ",
-        "SELECT ",
-        "  jobs.name as job_name, ",
-        "  jrt.result_state, ",
-        "  COUNT(DISTINCT jrt.run_id) as run_count ",
-        "FROM system.lakeflow.job_run_timeline jrt ",
-        "LEFT JOIN jobs USING (workspace_id, job_id) ",
-        "WHERE jobs.name IS NOT NULL ",
-        "  AND jrt.result_state IS NOT NULL ",
-        "  AND jrt.period_start_time > CURRENT_TIMESTAMP() - INTERVAL 30 DAYS ",
-        "GROUP BY jobs.name, jrt.result_state ",
-        "ORDER BY jobs.name, run_count DESC"
-      ]
-    },
-    {
-      "name": "job_runs_daily",
-      "displayName": "job_runs_daily",
-      "queryLines": [
-        "WITH jobs AS ( ",
-        "  SELECT *, ROW_NUMBER() OVER (PARTITION BY workspace_id, job_id ORDER BY change_time DESC) as rn ",
-        "  FROM system.lakeflow.jobs ",
-        "  WHERE (name LIKE '%RDW%' OR name LIKE '%Bronze%' OR name LIKE '%Silver%' OR name LIKE '%Gold%')",
-        "  QUALIFY rn = 1 ",
-        ") ",
-        "SELECT ",
-        "  DATE(jrt.period_start_time) as run_date, ",
-        "  jrt.result_state, ",
-        "  COUNT(DISTINCT jrt.run_id) as run_count ",
-        "FROM system.lakeflow.job_run_timeline jrt ",
-        "LEFT JOIN jobs USING (workspace_id, job_id) ",
-        "WHERE jobs.name IS NOT NULL ",
-        "  AND jrt.result_state IS NOT NULL ",
-        "  AND jrt.period_start_time > CURRENT_TIMESTAMP() - INTERVAL 30 DAYS ",
-        "GROUP BY DATE(jrt.period_start_time), jrt.result_state ",
-        "ORDER BY run_date"
-      ]
-    },
-    {
       "name": "job_stats",
       "displayName": "job_stats",
       "queryLines": [
@@ -122,31 +76,75 @@
       ]
     },
     {
-      "name": "recent_job_runs",
-      "displayName": "recent_job_runs",
+      "name": "pipeline_layer_counts",
+      "displayName": "pipeline_layer_counts",
       "queryLines": [
-        "WITH jobs AS ( ",
-        "  SELECT *, ROW_NUMBER() OVER (PARTITION BY workspace_id, job_id ORDER BY change_time DESC) as rn ",
-        "  FROM system.lakeflow.jobs ",
-        "  WHERE (name LIKE '%RDW%' OR name LIKE '%Bronze%' OR name LIKE '%Silver%' OR name LIKE '%Gold%')",
-        "  QUALIFY rn = 1 ",
-        ") ",
         "SELECT ",
-        "  jobs.name as job_name, ",
-        "  jrt.run_id, ",
-        "  jrt.result_state, ",
-        "  jrt.trigger_type, ",
-        "  jrt.period_start_time as start_time, ",
-        "  jrt.period_end_time as end_time, ",
-        "  ROUND(SUM(TIMESTAMPDIFF(SECOND, jrt.period_start_time, jrt.period_end_time)) / 60.0, 1) as duration_minutes ",
-        "FROM system.lakeflow.job_run_timeline jrt ",
-        "LEFT JOIN jobs USING (workspace_id, job_id) ",
-        "WHERE jobs.name IS NOT NULL ",
-        "  AND jrt.result_state IS NOT NULL ",
-        "  AND jrt.period_start_time > CURRENT_TIMESTAMP() - INTERVAL 7 DAYS ",
-        "GROUP BY jobs.name, jrt.run_id, jrt.result_state, jrt.trigger_type, jrt.period_start_time, jrt.period_end_time ",
-        "ORDER BY jrt.period_start_time DESC ",
-        "LIMIT 50"
+        "  'Bronze' as layer, ",
+        "  'registered_vehicles' as table_name, ",
+        "  COUNT(*) as row_count ",
+        "FROM bronze_catalog.rdw_etl.registered_vehicles ",
+        "UNION ALL ",
+        "SELECT ",
+        "  'Silver' as layer, ",
+        "  'registered_vehicles' as table_name, ",
+        "  COUNT(*) as row_count ",
+        "FROM silver_catalog.rdw_etl.registered_vehicles ",
+        "WHERE __is_current = true ",
+        "UNION ALL ",
+        "SELECT ",
+        "  'Gold' as layer, ",
+        "  'registered_vehicles' as table_name, ",
+        "  COUNT(*) as row_count ",
+        "FROM gold_catalog.rdw_etl.registered_vehicles"
+      ]
+    },
+    {
+      "name": "pipeline_freshness",
+      "displayName": "pipeline_freshness",
+      "queryLines": [
+        "SELECT ",
+        "  'registered_vehicles' as table_name, ",
+        "  MAX(__processed_time) as last_processed, ",
+        "  ROUND(TIMESTAMPDIFF(HOUR, MAX(__processed_time), CURRENT_TIMESTAMP()), 1) as hours_since_update ",
+        "FROM silver_catalog.rdw_etl.registered_vehicles ",
+        "UNION ALL ",
+        "SELECT ",
+        "  'registered_vehicles_fuel' as table_name, ",
+        "  MAX(__processed_time) as last_processed, ",
+        "  ROUND(TIMESTAMPDIFF(HOUR, MAX(__processed_time), CURRENT_TIMESTAMP()), 1) as hours_since_update ",
+        "FROM silver_catalog.rdw_etl.registered_vehicles_fuel ",
+        "UNION ALL ",
+        "SELECT ",
+        "  'registered_vehicles_axles' as table_name, ",
+        "  MAX(__processed_time) as last_processed, ",
+        "  ROUND(TIMESTAMPDIFF(HOUR, MAX(__processed_time), CURRENT_TIMESTAMP()), 1) as hours_since_update ",
+        "FROM silver_catalog.rdw_etl.registered_vehicles_axles"
+      ]
+    },
+    {
+      "name": "scd2_operations",
+      "displayName": "scd2_operations",
+      "queryLines": [
+        "SELECT ",
+        "  __operation as operation, ",
+        "  COUNT(*) as record_count ",
+        "FROM silver_catalog.rdw_etl.registered_vehicles ",
+        "WHERE __processed_time > CURRENT_TIMESTAMP() - INTERVAL 7 DAYS ",
+        "GROUP BY __operation ",
+        "ORDER BY record_count DESC"
+      ]
+    },
+    {
+      "name": "quarantine_counts",
+      "displayName": "quarantine_counts",
+      "queryLines": [
+        "SELECT ",
+        "  table_name, ",
+        "  1 as quarantined_count ",
+        "FROM bronze_catalog.information_schema.tables ",
+        "WHERE table_schema = 'rdw_etl_quarantine' ",
+        "ORDER BY table_name"
       ]
     }
   ],
@@ -989,7 +987,7 @@
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "job_runs_by_state",
+                  "datasetName": "job_runs",
                   "fields": [
                     {
                       "name": "job_name",
@@ -1000,11 +998,11 @@
                       "expression": "`result_state`"
                     },
                     {
-                      "name": "run_count",
-                      "expression": "`run_count`"
+                      "name": "count(run_id)",
+                      "expression": "COUNT(DISTINCT `run_id`)"
                     }
                   ],
-                  "disaggregated": true
+                  "disaggregated": false
                 }
               }
             ],
@@ -1022,7 +1020,7 @@
                   }
                 },
                 "y": {
-                  "fieldName": "run_count",
+                  "fieldName": "count(run_id)",
                   "scale": {
                     "type": "quantitative"
                   },
@@ -1083,22 +1081,22 @@
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "job_runs_daily",
+                  "datasetName": "job_runs",
                   "fields": [
                     {
-                      "name": "run_date",
-                      "expression": "`run_date`"
+                      "name": "daily(period_start_time)",
+                      "expression": "DATE_TRUNC(\"DAY\", `period_start_time`)"
                     },
                     {
                       "name": "result_state",
                       "expression": "`result_state`"
                     },
                     {
-                      "name": "run_count",
-                      "expression": "`run_count`"
+                      "name": "count(run_id)",
+                      "expression": "COUNT(DISTINCT `run_id`)"
                     }
                   ],
-                  "disaggregated": true
+                  "disaggregated": false
                 }
               }
             ],
@@ -1107,7 +1105,7 @@
               "widgetType": "area",
               "encodings": {
                 "x": {
-                  "fieldName": "run_date",
+                  "fieldName": "daily(period_start_time)",
                   "scale": {
                     "type": "temporal"
                   },
@@ -1116,7 +1114,7 @@
                   }
                 },
                 "y": {
-                  "fieldName": "run_count",
+                  "fieldName": "count(run_id)",
                   "scale": {
                     "type": "quantitative"
                   },
@@ -1255,7 +1253,7 @@
               {
                 "name": "main_query",
                 "query": {
-                  "datasetName": "recent_job_runs",
+                  "datasetName": "job_runs",
                   "fields": [
                     {
                       "name": "job_name",
@@ -1270,8 +1268,8 @@
                       "expression": "`trigger_type`"
                     },
                     {
-                      "name": "start_time",
-                      "expression": "`start_time`"
+                      "name": "period_start_time",
+                      "expression": "`period_start_time`"
                     },
                     {
                       "name": "duration_minutes",
@@ -1300,7 +1298,7 @@
                     "displayName": "Trigger"
                   },
                   {
-                    "fieldName": "start_time",
+                    "fieldName": "period_start_time",
                     "displayName": "Start Time"
                   },
                   {
@@ -1310,7 +1308,7 @@
                 ]
               },
               "frame": {
-                "title": "Recent Job Runs (7 days)",
+                "title": "Recent Job Runs (30 days)",
                 "showTitle": true
               }
             }
@@ -1320,6 +1318,312 @@
             "y": 14,
             "width": 6,
             "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "pipeline_health_header",
+            "textbox_spec": "## Pipeline Health\nData layer metrics, freshness, and quality"
+          },
+          "position": {
+            "x": 0,
+            "y": 20,
+            "width": 6,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "layer_row_counts",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_layer_counts",
+                  "fields": [
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "row_count",
+                      "expression": "`row_count`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "layer",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "axis": {
+                    "title": "Layer"
+                  }
+                },
+                "y": {
+                  "fieldName": "row_count",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "axis": {
+                    "title": "Row Count"
+                  }
+                },
+                "color": {
+                  "fieldName": "layer",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Bronze",
+                        "color": "#CD7F32"
+                      },
+                      {
+                        "value": "Silver",
+                        "color": "#C0C0C0"
+                      },
+                      {
+                        "value": "Gold",
+                        "color": "#FFD700"
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "title": "Row Counts by Layer",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 21,
+            "width": 2,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "scd2_operations_chart",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "scd2_operations",
+                  "fields": [
+                    {
+                      "name": "operation",
+                      "expression": "`operation`"
+                    },
+                    {
+                      "name": "record_count",
+                      "expression": "`record_count`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "record_count",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "operation",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "INSERT",
+                        "color": "#3CB371"
+                      },
+                      {
+                        "value": "UPDATE",
+                        "color": "#4169E1"
+                      },
+                      {
+                        "value": "DELETE",
+                        "color": "#DC143C"
+                      },
+                      {
+                        "value": "NO_CHANGE",
+                        "color": "#808080"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "title": "SCD2 Operations (7 days)",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 21,
+            "width": 2,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "total_quarantined",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "quarantine_counts",
+                  "fields": [
+                    {
+                      "name": "sum(quarantined_count)",
+                      "expression": "SUM(`quarantined_count`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(quarantined_count)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Tables with Quarantine"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 21,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "quarantine_by_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "quarantine_counts",
+                  "fields": [
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "quarantined_count",
+                      "expression": "`quarantined_count`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "table_name",
+                    "displayName": "Table with Quarantine"
+                  }
+                ]
+              },
+              "frame": {
+                "title": "Quarantine Tables",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 23,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "data_freshness_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "pipeline_freshness",
+                  "fields": [
+                    {
+                      "name": "table_name",
+                      "expression": "`table_name`"
+                    },
+                    {
+                      "name": "last_processed",
+                      "expression": "`last_processed`"
+                    },
+                    {
+                      "name": "hours_since_update",
+                      "expression": "`hours_since_update`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "table_name",
+                    "displayName": "Table"
+                  },
+                  {
+                    "fieldName": "last_processed",
+                    "displayName": "Last Processed"
+                  },
+                  {
+                    "fieldName": "hours_since_update",
+                    "displayName": "Hours Ago"
+                  }
+                ]
+              },
+              "frame": {
+                "title": "Data Freshness (Silver Layer)",
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 26,
+            "width": 6,
+            "height": 4
           }
         }
       ],

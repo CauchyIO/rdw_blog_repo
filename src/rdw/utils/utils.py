@@ -111,17 +111,6 @@ def save_delta_table(df: DataFrame, delta_path: str, mode: str = "overwrite", me
     .option("mergeSchema", mergeSchema) 
     .option("overwriteSchema", overwriteSchema)
     .saveAsTable(delta_path)
-)
-    
-def save_delta_table_preserve_constraints(df: DataFrame, delta_path: str, spark: SparkSession):
-    # First, truncate the table (preserves metadata)
-    spark.sql(f"TRUNCATE TABLE {delta_path}")
-
-    # Then append new data (preserves constraints)
-    df.write.format("delta") \
-      .mode("append") \
-      .option("mergeSchema", "true") \
-      .saveAsTable(delta_path)
 
 
 def get_latest_timestamp_folder(volume_base_path: str) -> str:
