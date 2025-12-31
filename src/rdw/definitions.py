@@ -18,6 +18,7 @@ rdw_tables = [
         url="https://opendata.rdw.nl/api/views/m9d7-ebf2/rows.csv?accessType=DOWNLOAD",
         name = "registered_vehicles",
         description="Main dataset of registered vehicles in the Netherlands. Contains comprehensive vehicle information including registration details, technical specifications, ownership, and inspection data.",
+        scd2_tracking=True,
         columns=[
             BaseColumn(input_col="Kenteken", output_col="license_plate", original_type=str, output_data_type=StringType(), is_primary_key=True, is_nullable=False, description="The license plate of a vehicle, consisting of a combination of numbers and letters. This makes the vehicle unique and identifiable."),
             BaseColumn(input_col="Voertuigsoort", output_col="vehicle_type", original_type=str, output_data_type=StringType(), description="European vehicle category, followed by the national vehicle type as registered in the license register. The national type is derived from the European category."),

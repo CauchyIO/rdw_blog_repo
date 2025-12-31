@@ -13,8 +13,9 @@ class BaseColumn(BaseModel):
     is_nullable: bool = True
     is_primary_key: bool = False
     is_foreign_key: bool = False
-    foreign_key_reference_table: str = None 
-    foreign_key_reference_column: str = None 
+    foreign_key_reference_table: str = None
+    foreign_key_reference_column: str = None
+    description: str = None
 
     @property
     def comment(self):
@@ -70,7 +71,9 @@ class BaseTable(BaseModel):
                     "__valid_to TIMESTAMP",
                     "__is_current BOOLEAN",
                     "__operation STRING",
-                    "__processed_time TIMESTAMP"
+                    "__processed_time TIMESTAMP",
+                    "__row_hash STRING",
+                    "__version INTEGER"
                 ]
             for scd_col in scd2_columns:
                 create_statement += f"\t{scd_col},\n"
@@ -104,7 +107,9 @@ class BaseTable(BaseModel):
                 ("__valid_to", "SCD2: Timestamp when this record version became invalid (NULL for current records)"),
                 ("__is_current", "SCD2: Boolean flag indicating if this is the current version of the record"),
                 ("__operation", "SCD2: Type of operation that created this record (INSERT, UPDATE, DELETE)"),
-                ("__processed_time", "SCD2: Timestamp when this record was processed into the table")
+                ("__processed_time", "SCD2: Timestamp when this record was processed into the table"),
+                ("__row_hash", "SCD2: MD5 hash of tracked columns for change detection"),
+                ("__version", "SCD2: Version number of this record (increments with each update)")
             ]
             for col_name, comment in scd2_column_comments:
                 alter_statements.append(f'ALTER TABLE {catalog}.{schema}.{self.name} ALTER COLUMN {col_name} COMMENT "{comment}";\n')
@@ -150,6 +155,7 @@ class BaseTable(BaseModel):
 class RDWTable(BaseTable):
     url: str
     database: str = rdw_schema
+    scd2_tracking: bool = False
 
     @computed_field
     @property

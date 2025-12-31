@@ -1,7 +1,7 @@
 [project]
 name = "rdw"
 description = "RDW Data Ingestion Framework"
-requires-python = "3.12"
+requires-python = ">=3.10"
 dependencies = [
     "databricks-labs-dqx==0.8.0",
     # few core dependencies on purpose to avoid conflicts on DB clusters.
@@ -19,6 +19,7 @@ dev = [
     "pip>=24.2",
     "pre-commit>=4.1.0, <5",
     "pytest>=8.3.5, <9",
+    "mlflow[databricks]>=3.4",
     ]
 
 test = [

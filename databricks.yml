@@ -7,6 +7,7 @@ bundle:
 include:
   - resources/*.yml
 
+
 artifacts:
   default:
     type: whl
@@ -17,9 +18,6 @@ variables:
   environment:
     description: Environment (DEV/ACC/PRD)
     default: DEV
-  full_refresh:
-    description: Overwrite all data in current UC layer
-    default: false
   rdw_table_names:
     description: List of RDW table names 
     default: '["odometer_reading_judgment_explanation", "registered_vehicles", "registered_vehicles_axles", "registered_vehicles_fuel", "registered_vehicles_body", "registered_vehicles_body_specification", "registered_vehicles_class", "registered_vehicles_subcategory", "registered_vehicles_special_features", "registered_vehicles_crawler_tracks"]'
@@ -28,6 +26,16 @@ variables:
     default: 4
 
 resources:
+  clusters:
+    etl_cluster:
+      cluster_name: "RDW ETL Cluster - ${var.environment}"
+      spark_version: "17.3.x-scala2.13"
+      node_type_id: Standard_DS3_v2
+      num_workers: 1
+      autotermination_minutes: 30
+      data_security_mode: SINGLE_USER
+      single_user_name: ${workspace.current_user.userName}
+
   jobs:
     # Downloads CSV data from RDW Open Data API
     rdw_download:
@@ -66,19 +74,16 @@ resources:
             concurrency: ${var.job_concurrency}
             task:
               task_key: bronze_table_iteration
+              existing_cluster_id: ${resources.clusters.etl_cluster.id}
+              libraries:
+                - whl: ./dist/rdw-*.whl
+                - pypi:
+                    package: databricks-labs-dqx==0.8.0
               python_wheel_task:
                 package_name: rdw
                 entry_point: process_bronze_layer
                 parameters:
                   - "--table-name={{input}}"
-              environment_key: default
-      environments:
-        - environment_key: default
-          spec:
-            environment_version: "3"
-            dependencies:
-              - ./dist/rdw-*.whl
-              - databricks-labs-dqx==0.8.0
 
     # Creates silver tables with schema, PKs, and column descriptions
     prepare_silver:
@@ -91,19 +96,16 @@ resources:
             concurrency: ${var.job_concurrency}
             task:
               task_key: prepare_silver_table_iteration
+              existing_cluster_id: ${resources.clusters.etl_cluster.id}
+              libraries:
+                - whl: ./dist/rdw-*.whl
+                - pypi:
+                    package: databricks-labs-dqx==0.8.0
               python_wheel_task:
                 package_name: rdw
                 entry_point: prepare_silver_layer
                 parameters:
                   - "--table-name={{input}}"
-              environment_key: default
-      environments:
-        - environment_key: default
-          spec:
-            environment_version: "3"
-            dependencies:
-              - ./dist/rdw-*.whl
-              - databricks-labs-dqx==0.8.0
 
     # Processes bronze to silver with SCD2, DQX validation, and FK constraints
     silver:
@@ -116,21 +118,17 @@ resources:
             concurrency: ${var.job_concurrency}
             task:
               task_key: silver_table_iteration
+              existing_cluster_id: ${resources.clusters.etl_cluster.id}
+              libraries:
+                - whl: ./dist/rdw-*.whl
+                - pypi:
+                    package: databricks-labs-dqx==0.8.0
               max_retries: 0
               python_wheel_task:
                 package_name: rdw
                 entry_point: process_silver_layer
                 parameters:
                   - "--table-name={{input}}"
-                  - "--full-refresh=${var.full_refresh}"
-              environment_key: default
-      environments:
-        - environment_key: default
-          spec:
-            environment_version: "3"
-            dependencies:
-              - ./dist/rdw-*.whl
-              - databricks-labs-dqx==0.8.0
 
     # Creates business-ready gold tables and metric views
     gold:
@@ -138,17 +136,14 @@ resources:
       description: "Creates licensed_vehicles table and vehicle_fleet_metrics metric view"
       tasks:
         - task_key: process_gold_layer
+          existing_cluster_id: ${resources.clusters.etl_cluster.id}
+          libraries:
+            - whl: ./dist/rdw-*.whl
+            - pypi:
+                package: databricks-labs-dqx==0.8.0
           python_wheel_task:
             package_name: rdw
             entry_point: process_gold_layer
-          environment_key: default
-      environments:
-        - environment_key: default
-          spec:
-            environment_version: "3"
-            dependencies:
-              - ./dist/rdw-*.whl
-              - databricks-labs-dqx==0.8.0
 
     # Runs bronze -> prepare_silver -> silver -> gold (skips download)
     partial_pipeline:
@@ -181,6 +176,13 @@ resources:
     full_pipeline:
       name: "Full RDW Pipeline - ${var.environment}"
       description: "Complete ETL pipeline from RDW API download through gold layer"
+      schedule:
+        quartz_cron_expression: "0 0 9 ? * MON"
+        timezone_id: "Europe/Amsterdam"
+        pause_status: UNPAUSED
+      email_notifications:
+        on_failure:
+          - user@org.com # ENTER HERE
       tasks:
         - task_key: run_download
           run_job_task:
@@ -216,7 +218,7 @@ resources:
       description: "RDW Vehicle Data Dashboard"
       source_code_path: ./webapp
       permissions:
-        - user_name: your@user.io # ENTER HERE
+        - user_name: user@org.com # ENTER HERE
           level: CAN_MANAGE
 
   sql_warehouses:

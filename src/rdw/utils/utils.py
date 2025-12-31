@@ -93,7 +93,7 @@ def chunked_download(url: str, output_path: str, chunk_size: int = 512 * 1024, m
                     print(f"[TEST MODE] Download limited to {chunks_downloaded} chunks")
                     break
 
-def read_volume_csv(volume_path: str, spark: SparkSession = SparkSession.getActiveSession()) -> DataFrame: # rename type annottation into explicit spark DataFrame --> this is ambiguous, could be both pollars / pandas / spark?
+def read_volume_csv(volume_path: str, spark: SparkSession = SparkSession.getActiveSession()) -> DataFrame: 
     return (
     spark.read.format("csv")
     .option("header", "true")
@@ -111,6 +111,7 @@ def save_delta_table(df: DataFrame, delta_path: str, mode: str = "overwrite", me
     .option("mergeSchema", mergeSchema) 
     .option("overwriteSchema", overwriteSchema)
     .saveAsTable(delta_path)
+)
 
 
 def get_latest_timestamp_folder(volume_base_path: str) -> str:
